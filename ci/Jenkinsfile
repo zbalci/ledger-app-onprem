@@ -1,0 +1,184 @@
+def APP_NAME = "ledger-app-${env.BRANCH_NAME == 'main' ? 'prod' : env.BRANCH_NAME}"
+
+pipeline {
+
+    environment {
+        REGISTRY               = "hub.zekibalci.com:5000"
+        REGISTRY_CREDENTIALS   = credentials('docker-registry-user')
+        CONTAINER_NAME         = "ledger-app-web"
+        IMAGE_TAG              = "${BUILD_ID}"
+        GIT_CREDENTIALS        = credentials('github-credentials')
+    }
+
+    agent {
+        kubernetes {
+            yaml """
+apiVersion: v1
+kind: Pod
+spec:
+  serviceAccountName: jenkins-user
+  imagePullSecrets:
+    - name: docker-registry-secret
+  containers:
+    - name: ledger-app-web-codeless
+      image: hub.zekibalci.com:5000/ledger-app-web-codeless:latest
+      tty: true
+      ports:
+        - containerPort: 5000
+      env:
+        - name: DATABASE_HOST
+          value: localhost
+        - name: DATABASE_HOST_PORT
+          value: "3306"
+        - name: DATABASE
+          valueFrom:
+            secretKeyRef:
+              name: ${APP_NAME}-db-creds
+              key: database
+        - name: DATABASE_USER
+          valueFrom:
+            secretKeyRef:
+              name: ${APP_NAME}-db-creds
+              key: username
+        - name: DATABASE_PASS
+          valueFrom:
+            secretKeyRef:
+              name: ${APP_NAME}-db-creds
+              key: password
+
+    - name: ledger-app-sql-test
+      image: hub.zekibalci.com:5000/ledger-app-sql-test:latest
+      ports:
+        - containerPort: 3306
+
+    - name: bandit
+      image: ghcr.io/pycqa/bandit/bandit:latest
+      command: ["cat"]
+      tty: true
+"""
+        }
+    }
+
+    stages {
+
+        stage('Init') {
+            steps {
+                script {
+                    env.ENVIRONMENT = (env.BRANCH_NAME == 'main') ? 'prod' : env.BRANCH_NAME
+                    env.IMAGE_NAME  = "${REGISTRY}/${CONTAINER_NAME}-${env.ENVIRONMENT}"
+                }
+            }
+        }
+
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+	
+        stage('Run Integration Tests') {
+            steps {
+                container('ledger-app-web-codeless') {
+                    sh '''
+						cd web
+                        python -m unittest discover -s tests -t .
+                    '''
+                }
+            }
+        }
+
+        stage('Bandit') {
+            steps {
+                container('bandit') {
+                    sh '''
+                        bandit -r . -lll
+                    '''
+                }
+            }
+        }
+
+        stage('Build Image') {
+            agent {
+                kubernetes {
+                    yaml """
+apiVersion: v1
+kind: Pod
+spec:
+  serviceAccountName: jenkins-user
+  volumes:
+    - name: docker-registry-vol
+      secret:
+        secretName: docker-registry-config
+  containers:
+    - name: kaniko
+      image: gcr.io/kaniko-project/executor:debug
+      command: ["/busybox/cat"]
+      tty: true
+      volumeMounts:
+        - name: docker-registry-vol
+          mountPath: /kaniko/.docker
+    - name: trivy
+      image: aquasec/trivy:latest
+      command: ["cat"]
+      tty: true
+"""
+                }
+            }
+            steps {
+                container('kaniko') {
+                    sh """
+                        /kaniko/executor \
+                          --dockerfile web/Dockerfile \
+                          --context web \
+                          --destination ${IMAGE_NAME}:${IMAGE_TAG} \
+                          --destination ${IMAGE_NAME}:latest
+                    """
+                }
+            }
+        }
+
+        stage('Trivy Image Scan') {
+            agent {
+                kubernetes {
+                    yaml """
+apiVersion: v1
+kind: Pod
+spec:
+  serviceAccountName: jenkins-user
+  containers:
+    - name: trivy
+      image: aquasec/trivy:latest
+      command: ["cat"]
+      tty: true
+"""
+                }
+            }
+            steps {
+                container('trivy') {
+                    sh """
+                        trivy image \
+                          --severity HIGH,CRITICAL \
+                          --username ${REGISTRY_CREDENTIALS_USR} \
+                          --password ${REGISTRY_CREDENTIALS_PSW} \
+                          --exit-code 1 \
+                          ${IMAGE_NAME}:${IMAGE_TAG}
+                    """
+                }
+            }
+        }
+
+        stage('Update Helm Values') {
+            steps {
+                sh """
+                    git clone https://${GIT_CREDENTIALS_USR}:${GIT_CREDENTIALS_PSW}@github.com/zbalci/ledger-app.git
+                    cd ledger-app/charts
+                    sed -i "/^web:/,/^sql:/ s|^\\([[:space:]]*image:\\).*|\\1 ${IMAGE_NAME}:${IMAGE_TAG}|" values-${ENVIRONMENT}.yaml
+                    git config user.name "jenkins-bot"
+                    git config user.email "jenkins@ci.local"
+                    git commit -am "Update ${CONTAINER_NAME} image to ${IMAGE_TAG}"
+                    git push origin main
+                """
+            }
+        }
+    }
+}
