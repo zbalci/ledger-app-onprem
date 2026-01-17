@@ -170,7 +170,7 @@ spec:
         stage('Update Helm Values') {
             steps {
                 sh """
-                    git clone https://${GIT_CREDENTIALS_USR}:${GIT_CREDENTIALS_PSW}@github.com/zbalci/ledger-app.git
+                    git clone https://${GIT_CREDENTIALS_USR}:${GIT_CREDENTIALS_PSW}@github.com/zbalci/ledger-app-onprem.git
                     cd ledger-app/charts
                     sed -i "/^web:/,/^sql:/ s|^\\([[:space:]]*image:\\).*|\\1 ${IMAGE_NAME}:${IMAGE_TAG}|" values-${ENVIRONMENT}.yaml
                     git config user.name "jenkins-bot"
