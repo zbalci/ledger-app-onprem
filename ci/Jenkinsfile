@@ -171,7 +171,7 @@ spec:
             steps {
                 sh """
                     git clone https://${GIT_CREDENTIALS_USR}:${GIT_CREDENTIALS_PSW}@github.com/zbalci/ledger-app-onprem.git
-                    cd ledger-app/charts
+		    cd ledger-app-onprem/helm/
                     sed -i "/^web:/,/^sql:/ s|^\\([[:space:]]*image:\\).*|\\1 ${IMAGE_NAME}:${IMAGE_TAG}|" values-${ENVIRONMENT}.yaml
                     git config user.name "jenkins-bot"
                     git config user.email "jenkins@ci.local"
