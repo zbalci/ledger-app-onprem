@@ -1,4 +1,4 @@
-from app.app import create_app
+from app.routes import create_app
 from datetime import datetime
 import unittest
 from bs4 import BeautifulSoup
