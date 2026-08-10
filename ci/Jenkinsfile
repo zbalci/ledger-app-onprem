@@ -263,13 +263,13 @@ spec:
                     git config user.name "jenkins-bot"
                     git config user.email "jenkins@ci.local"
 
-                    git add values-${ENVIRONMENT}.yaml
+                    git add helm/values-${ENVIRONMENT}.yaml
 
                     git commit -m "Update ${CONTAINER_NAME} image to ${IMAGE_TAG}"
 
                     git push origin HEAD:${BRANCH_NAME}
                 """
-                    }
+              }
         }
     }
 }
