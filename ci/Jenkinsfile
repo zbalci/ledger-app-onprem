@@ -266,15 +266,27 @@ spec:
             steps {
 
                 sh """
-                    git clone https://${GIT_CREDENTIALS_USR}:${GIT_CREDENTIALS_PSW}@github.com/zbalci/ledger-app-onprem.git
+                    rm -rf ledger-app-onprem
+
+                    git clone \
+                    --branch "${BRANCH_NAME}" \
+                    https://${GIT_CREDENTIALS_USR}:${GIT_CREDENTIALS_PSW}@github.com/zbalci/ledger-app-onprem.git \
+                    ledger-app-onprem
+
                     cd ledger-app-onprem/helm/
+
                     sed -i "/^web:/,/^sql:/ s|^\\([[:space:]]*image:\\).*|\\1 ${IMAGE_NAME}:${IMAGE_TAG}|" values-${ENVIRONMENT}.yaml
+
                     git config user.name "jenkins-bot"
                     git config user.email "jenkins@ci.local"
-                    git commit -am "Update ${CONTAINER_NAME} image to ${IMAGE_TAG}"
-                    git push origin main
+
+                    git add values-${ENVIRONMENT}.yaml
+
+                    git commit -m "Update ${CONTAINER_NAME} image to ${IMAGE_TAG}"
+
+                    git push origin HEAD:${BRANCH_NAME}
                 """
-            }
+                    }
         }
     }
 }
