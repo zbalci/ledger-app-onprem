@@ -258,6 +258,8 @@ spec:
 
                     sed -i "/^web:/,/^sql:/ s|^\\([[:space:]]*image:\\).*|\\1 ${IMAGE_NAME}:${IMAGE_TAG}|" values-${ENVIRONMENT}.yaml
 
+                    cd ..
+
                     git config user.name "jenkins-bot"
                     git config user.email "jenkins@ci.local"
 
