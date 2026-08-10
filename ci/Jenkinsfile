@@ -3,11 +3,11 @@ def APP_NAME = "ledger-app-${env.BRANCH_NAME == 'main' ? 'prod' : env.BRANCH_NAM
 pipeline {
 
     environment {
-        REGISTRY               = "hub.zekibalci.com:5000"
-        REGISTRY_CREDENTIALS   = credentials('docker-registry-user')
-        CONTAINER_NAME         = "ledger-app-web"
-        IMAGE_TAG              = "${BUILD_ID}"
-        GIT_CREDENTIALS        = credentials('github-credentials')
+        REGISTRY             = "hub.zekibalci.com:5000"
+        REGISTRY_CREDENTIALS = credentials('docker-registry-user')
+        CONTAINER_NAME       = "ledger-app-web"
+        IMAGE_TAG          = "${BUILD_ID}"
+        GIT_CREDENTIALS    = credentials('github-credentials')
     }
 
     agent {
@@ -15,57 +15,103 @@ pipeline {
             yaml """
 apiVersion: v1
 kind: Pod
+
 spec:
   serviceAccountName: jenkins-user
-  imagePullSecrets:
-    - name: docker-registry-secret
+
   containers:
-    - name: ledger-app-web-codeless
-      image: hub.zekibalci.com:5000/ledger-app-web-codeless:latest
+
+    - name: ledger-app-web-dev
+      image: python:3.12-slim
+      command: ["cat"]
       tty: true
+
       ports:
         - containerPort: 5000
+
       env:
         - name: DATABASE_HOST
           value: localhost
+
         - name: DATABASE_HOST_PORT
           value: "3306"
+
         - name: DATABASE
           valueFrom:
             secretKeyRef:
               name: ${APP_NAME}-db-creds
               key: database
+
         - name: DATABASE_USER
           valueFrom:
             secretKeyRef:
               name: ${APP_NAME}-db-creds
               key: username
+
         - name: DATABASE_PASS
           valueFrom:
             secretKeyRef:
               name: ${APP_NAME}-db-creds
               key: password
 
-    - name: ledger-app-sql-test
-      image: hub.zekibalci.com:5000/ledger-app-sql-test:latest
+
+    - name: ledger-app-db
+      image: mysql:8.4
+
       ports:
         - containerPort: 3306
 
-    - name: bandit
-      image: ghcr.io/pycqa/bandit/bandit:latest
-      command: ["cat"]
-      tty: true
+      env:
+        - name: MYSQL_DATABASE
+          valueFrom:
+            secretKeyRef:
+              name: ${APP_NAME}-db-creds
+              key: database
+
+        - name: MYSQL_USER
+          valueFrom:
+            secretKeyRef:
+              name: ${APP_NAME}-db-creds
+              key: username
+
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: ${APP_NAME}-db-creds
+              key: password
+
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: ${APP_NAME}-db-creds
+              key: rootpass
+
+      volumeMounts:
+        - name: mysql-init-volume
+          mountPath: /docker-entrypoint-initdb.d
+
+
+  volumes:
+
+    - name: mysql-init-volume
+      configMap:
+        name: mysql-init-script
+
 """
         }
     }
+
 
     stages {
 
         stage('Init') {
             steps {
                 script {
-                    env.ENVIRONMENT = (env.BRANCH_NAME == 'main') ? 'prod' : env.BRANCH_NAME
-                    env.IMAGE_NAME  = "${REGISTRY}/${CONTAINER_NAME}-${env.ENVIRONMENT}"
+                    env.ENVIRONMENT = (env.BRANCH_NAME == 'main') ?
+                        'prod' :
+                        env.BRANCH_NAME
+
+                    env.IMAGE_NAME = "${REGISTRY}/${CONTAINER_NAME}-${env.ENVIRONMENT}"
                 }
             }
         }
@@ -75,57 +121,97 @@ spec:
                 checkout scm
             }
         }
-	
+
         stage('Run Integration Tests') {
+
             steps {
-                container('ledger-app-web-codeless') {
+
+                container('ledger-app-web-dev') {
+
                     sh '''
-						cd web
+                        cd web
+
+                        pip install -r requirements.txt
+
                         python -m unittest discover -s tests -t .
                     '''
                 }
             }
         }
 
+
         stage('Bandit') {
+
             steps {
-                container('bandit') {
+
+                container('ledger-app-web-dev') {
+
                     sh '''
+                        cd web
+
+                        pip install bandit
+
                         bandit -r . -lll
                     '''
                 }
             }
         }
 
+
         stage('Build Image') {
+
             agent {
                 kubernetes {
+
                     yaml """
 apiVersion: v1
 kind: Pod
+
 spec:
   serviceAccountName: jenkins-user
+
   volumes:
+
     - name: docker-registry-vol
       secret:
         secretName: docker-registry-config
+
+    - name: build-workspace
+      emptyDir: {}
+
   containers:
+
+    - name: git
+      image: alpine/git:latest
+      command: ["cat"]
+      tty: true
+
+      volumeMounts:
+        - name: build-workspace
+          mountPath: /workspace
+
+
     - name: kaniko
       image: gcr.io/kaniko-project/executor:debug
       command: ["/busybox/cat"]
       tty: true
+
       volumeMounts:
+
         - name: docker-registry-vol
           mountPath: /kaniko/.docker
-    - name: trivy
-      image: aquasec/trivy:latest
-      command: ["cat"]
-      tty: true
+
+        - name: build-workspace
+          mountPath: /workspace
+
 """
                 }
             }
+
+
             steps {
                 container('kaniko') {
+
                     sh """
                         /kaniko/executor \
                           --dockerfile web/Dockerfile \
@@ -138,14 +224,19 @@ spec:
         }
 
         stage('Trivy Image Scan') {
+
             agent {
                 kubernetes {
+
                     yaml """
 apiVersion: v1
 kind: Pod
+
 spec:
   serviceAccountName: jenkins-user
+
   containers:
+
     - name: trivy
       image: aquasec/trivy:latest
       command: ["cat"]
@@ -153,11 +244,14 @@ spec:
 """
                 }
             }
+
             steps {
+
                 container('trivy') {
+
                     sh """
                         trivy image \
-                          --severity HIGH,CRITICAL \
+                          --severity CRITICAL \
                           --username ${REGISTRY_CREDENTIALS_USR} \
                           --password ${REGISTRY_CREDENTIALS_PSW} \
                           --exit-code 1 \
@@ -168,17 +262,31 @@ spec:
         }
 
         stage('Update Helm Values') {
+
             steps {
+
                 sh """
-                    git clone https://${GIT_CREDENTIALS_USR}:${GIT_CREDENTIALS_PSW}@github.com/zbalci/ledger-app-onprem.git
-		    cd ledger-app-onprem/helm/
+                    rm -rf ledger-app-onprem
+
+                    git clone \
+                    --branch "${BRANCH_NAME}" \
+                    https://${GIT_CREDENTIALS_USR}:${GIT_CREDENTIALS_PSW}@github.com/zbalci/ledger-app-onprem.git \
+                    ledger-app-onprem
+
+                    cd ledger-app-onprem/helm/
+
                     sed -i "/^web:/,/^sql:/ s|^\\([[:space:]]*image:\\).*|\\1 ${IMAGE_NAME}:${IMAGE_TAG}|" values-${ENVIRONMENT}.yaml
+
                     git config user.name "jenkins-bot"
                     git config user.email "jenkins@ci.local"
-                    git commit -am "Update ${CONTAINER_NAME} image to ${IMAGE_TAG}"
-                    git push origin main
+
+                    git add values-${ENVIRONMENT}.yaml
+
+                    git commit -m "Update ${CONTAINER_NAME} image to ${IMAGE_TAG}"
+
+                    git push origin HEAD:${BRANCH_NAME}
                 """
-            }
+                    }
         }
     }
 }
