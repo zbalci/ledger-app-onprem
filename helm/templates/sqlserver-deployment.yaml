@@ -23,6 +23,30 @@ spec:
         imagePullPolicy: Always
         ports:
         - containerPort: 3306
+        env:
+          - name: MYSQL_DATABASE
+            valueFrom:
+              secretKeyRef:
+                name: "{{ .Values.app.name }}-db-creds"
+                key: database
+
+          - name: MYSQL_USER
+            valueFrom:
+              secretKeyRef:
+                name: "{{ .Values.app.name }}-db-creds"
+                key: username
+
+          - name: MYSQL_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: "{{ .Values.app.name }}-db-creds"
+                key: password
+
+          - name: MYSQL_ROOT_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: "{{ .Values.app.name }}-db-creds"
+                key: rootpass
         volumeMounts:
         - name: sql-storage
           mountPath: "/var/lib/mysql/"
