@@ -266,14 +266,7 @@ spec:
             steps {
 
                 sh """
-                    rm -rf ledger-app-onprem
-
-                    git clone \
-                    --branch "${BRANCH_NAME}" \
-                    https://${GIT_CREDENTIALS_USR}:${GIT_CREDENTIALS_PSW}@github.com/zbalci/ledger-app-onprem.git \
-                    ledger-app-onprem
-
-                    cd ledger-app-onprem/helm/
+                    cd helm/
 
                     sed -i "/^web:/,/^sql:/ s|^\\([[:space:]]*image:\\).*|\\1 ${IMAGE_NAME}:${IMAGE_TAG}|" values-${ENVIRONMENT}.yaml
 
