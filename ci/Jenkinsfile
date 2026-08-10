@@ -92,7 +92,6 @@ spec:
 
 
   volumes:
-
     - name: mysql-init-volume
       configMap:
         name: mysql-init-script
@@ -176,20 +175,12 @@ spec:
       secret:
         secretName: docker-registry-config
 
-    - name: build-workspace
-      emptyDir: {}
-
   containers:
 
     - name: git
       image: alpine/git:latest
       command: ["cat"]
       tty: true
-
-      volumeMounts:
-        - name: build-workspace
-          mountPath: /workspace
-
 
     - name: kaniko
       image: gcr.io/kaniko-project/executor:debug
@@ -200,9 +191,6 @@ spec:
 
         - name: docker-registry-vol
           mountPath: /kaniko/.docker
-
-        - name: build-workspace
-          mountPath: /workspace
 
 """
                 }
