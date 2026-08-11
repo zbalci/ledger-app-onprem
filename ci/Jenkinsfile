@@ -110,7 +110,7 @@ spec:
                         'prod' :
                         env.BRANCH_NAME
 
-                    env.IMAGE_NAME = "${REGISTRY}/${CONTAINER_NAME}-${env.ENVIRONMENT}"
+                    env.IMAGE_NAME = "${REGISTRY}/${CONTAINER_NAME}"
                 }
             }
         }
