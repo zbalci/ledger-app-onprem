@@ -1,11 +1,11 @@
 def APP_NAME = "ledger-app-${env.BRANCH_NAME == 'main' ? 'prod' : env.BRANCH_NAME}"
+def CONTAINER_NAME = "${APP_NAME}-web"
 
 pipeline {
 
     environment {
         REGISTRY             = "hub.zekibalci.com:5000"
         REGISTRY_CREDENTIALS = credentials('docker-registry-user')
-        CONTAINER_NAME       = "${APP_NAME}-web"
         IMAGE_TAG            = "${BUILD_ID}"
         GIT_CREDENTIALS      = credentials('github-credentials')
     }
