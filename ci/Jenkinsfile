@@ -259,22 +259,26 @@ spec:
                     )
                 ]) {
                     sh """
-                        cd helm/
+                        rm -rf ledger-app-onprem-deployment
 
-                        sed -i "/^web:/,/^sql:/ s|^\\([[:space:]]*image:\\).*|\\1 ${IMAGE_NAME}:${IMAGE_TAG}|" values-${ENVIRONMENT}.yaml
+                        git clone \
+                            https://${GIT_USER}:${GIT_TOKEN}@github.com/zbalci/ledger-app-onprem-deployment.git \
+                            ledger-app-onprem-deployment
 
-                        cd ..
+                        cd ledger-app-onprem-deployment
+
+                        sed -i "/^web:/,/^sql:/ s|^\\([[:space:]]*image:\\).*|\\1 ${IMAGE_NAME}:${IMAGE_TAG}|" \
+                            values-${ENVIRONMENT}.yaml
 
                         git config user.name "jenkins-bot"
                         git config user.email "jenkins@ci.local"
 
-                        git add helm/values-${ENVIRONMENT}.yaml
+                        git add values-${ENVIRONMENT}.yaml
 
-                        git commit -m "Update ${CONTAINER_NAME} image to ${IMAGE_TAG}" || true
+                        git commit \
+                            -m "Update ${CONTAINER_NAME} image to ${IMAGE_TAG}" || true
 
-                        git remote set-url origin https://${GIT_USER}:${GIT_TOKEN}@github.com/zbalci/ledger-app-onprem-deployment.git
-
-                        git push origin HEAD:${BRANCH_NAME}
+                        git push origin HEAD:${ENVIRONMENT}
                     """
                 }
             }
