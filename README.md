@@ -54,6 +54,18 @@ Developer -> GitHub -> Jenkins (CI) -> Container Registry -> GitHub (Helm values
 * Database credentials are injected via Kubernetes Secrets
 * SQL schema is initialized through a Kubernetes Job
 
+## Project Structure
+
+---
+
+### Deployment
+
+Deployment configuration is maintained in a separate repository:
+
+**[ledger-app-onprem-deployment](https://github.com/zbalci/ledger-app-onprem-deployment)**
+
+The deployment repository contains the Helm and ArgoCD configuration for the application. Keeping deployment configuration separate from the application source code prevents environment-specific changes such as `values-dev.yaml` and `values-prod.yaml` from being mixed with application branches and simplifies the promotion of changes between environments.
+
 ---
 
 ## CI Pipeline (Jenkins)
