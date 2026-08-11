@@ -278,7 +278,7 @@ spec:
                         git commit \
                             -m "Update ${CONTAINER_NAME} image to ${IMAGE_TAG}" || true
 
-                        git push origin HEAD:${ENVIRONMENT}
+                        git push origin main
                     """
                 }
             }
