@@ -31,13 +31,10 @@ Developer -> GitHub -> Jenkins (CI) -> Container Registry -> GitHub (Helm values
 
 ```
 .
-├── charts/                 # Helm chart for Kubernetes deployment
-│   ├── templates/          # Deployments and Jobs
-│   ├── values-dev.yaml     # Dev environment values
-│   └── values-prod.yaml    # Prod environment values
+├── ci/                     # CI pipeline definition
+│   └── Jenkinsfile
 ├── compose/                # Local development setup
 │   └── docker-compose.yml
-├── Jenkinsfile             # CI pipeline definition
 ├── sql/                    # SQL image and initialization
 │   ├── Dockerfile
 │   └── init.sql
