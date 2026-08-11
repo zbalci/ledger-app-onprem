@@ -5,9 +5,9 @@ pipeline {
     environment {
         REGISTRY             = "hub.zekibalci.com:5000"
         REGISTRY_CREDENTIALS = credentials('docker-registry-user')
-        CONTAINER_NAME       = "ledger-app-web"
-        IMAGE_TAG          = "${BUILD_ID}"
-        GIT_CREDENTIALS    = credentials('github-credentials')
+        CONTAINER_NAME       = "${APP_NAME}-web"
+        IMAGE_TAG            = "${BUILD_ID}"
+        GIT_CREDENTIALS      = credentials('github-credentials')
     }
 
     agent {
@@ -21,7 +21,7 @@ spec:
 
   containers:
 
-    - name: ledger-app-web-dev
+    - name: ${CONTAINER_NAME}
       image: python:3.12-slim
       command: ["cat"]
       tty: true
@@ -55,7 +55,7 @@ spec:
               key: password
 
 
-    - name: ledger-app-db
+    - name: ${APP_NAME}-db
       image: mysql:8.4
 
       ports:
@@ -92,7 +92,6 @@ spec:
 
 
   volumes:
-
     - name: mysql-init-volume
       configMap:
         name: mysql-init-script
@@ -126,7 +125,7 @@ spec:
 
             steps {
 
-                container('ledger-app-web-dev') {
+                container("${CONTAINER_NAME}") {
 
                     sh '''
                         cd web
@@ -144,7 +143,7 @@ spec:
 
             steps {
 
-                container('ledger-app-web-dev') {
+                container("${CONTAINER_NAME}") {
 
                     sh '''
                         cd web
@@ -176,20 +175,12 @@ spec:
       secret:
         secretName: docker-registry-config
 
-    - name: build-workspace
-      emptyDir: {}
-
   containers:
 
     - name: git
       image: alpine/git:latest
       command: ["cat"]
       tty: true
-
-      volumeMounts:
-        - name: build-workspace
-          mountPath: /workspace
-
 
     - name: kaniko
       image: gcr.io/kaniko-project/executor:debug
@@ -200,9 +191,6 @@ spec:
 
         - name: docker-registry-vol
           mountPath: /kaniko/.docker
-
-        - name: build-workspace
-          mountPath: /workspace
 
 """
                 }
@@ -262,31 +250,34 @@ spec:
         }
 
         stage('Update Helm Values') {
-
             steps {
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: 'github-credentials',
+                        usernameVariable: 'GIT_USER',
+                        passwordVariable: 'GIT_TOKEN'
+                    )
+                ]) {
+                    sh """
+                        cd helm/
 
-                sh """
-                    rm -rf ledger-app-onprem
+                        sed -i "/^web:/,/^sql:/ s|^\\([[:space:]]*image:\\).*|\\1 ${IMAGE_NAME}:${IMAGE_TAG}|" values-${ENVIRONMENT}.yaml
 
-                    git clone \
-                    --branch "${BRANCH_NAME}" \
-                    https://${GIT_CREDENTIALS_USR}:${GIT_CREDENTIALS_PSW}@github.com/zbalci/ledger-app-onprem.git \
-                    ledger-app-onprem
+                        cd ..
 
-                    cd ledger-app-onprem/helm/
+                        git config user.name "jenkins-bot"
+                        git config user.email "jenkins@ci.local"
 
-                    sed -i "/^web:/,/^sql:/ s|^\\([[:space:]]*image:\\).*|\\1 ${IMAGE_NAME}:${IMAGE_TAG}|" values-${ENVIRONMENT}.yaml
+                        git add helm/values-${ENVIRONMENT}.yaml
 
-                    git config user.name "jenkins-bot"
-                    git config user.email "jenkins@ci.local"
+                        git commit -m "Update ${CONTAINER_NAME} image to ${IMAGE_TAG}" || true
 
-                    git add values-${ENVIRONMENT}.yaml
+                        git remote set-url origin https://${GIT_USER}:${GIT_TOKEN}@github.com/zbalci/ledger-app-onprem-deployment.git
 
-                    git commit -m "Update ${CONTAINER_NAME} image to ${IMAGE_TAG}"
-
-                    git push origin HEAD:${BRANCH_NAME}
-                """
-                    }
+                        git push origin HEAD:${BRANCH_NAME}
+                    """
+                }
+            }
         }
     }
 }
